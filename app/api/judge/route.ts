@@ -1,51 +1,59 @@
+import Anthropic from "@anthropic-ai/sdk"
 import { NextRequest, NextResponse } from "next/server"
 
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
 export async function POST(req: NextRequest) {
-  const { concept, level, question, answer } = await req.json()
+  const { concept, level, question, answer, nextQuestionTemplate } = await req.json()
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
-    return NextResponse.json({ error: "No API key" }, { status: 500 })
-  }
+  const nextQSection = level < 3 && nextQuestionTemplate
+    ? `\n\nAlso generate a personalized version of the next question that builds directly on what the player just said. The template is:\n"${nextQuestionTemplate}"\nRewrite it to reference something specific from their answer while targeting the same depth level. Store it in the "nextQuestion" field.`
+    : ""
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01"
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 300,
-      system: `You are a depth judge for a learning game called Rabbit Hole. Players answer questions about a concept at increasing levels of depth.
+  const prompt = `You are a warm, encouraging mentor judging a player's answer in a depth-of-understanding game called Rabbit Hole.
 
-Level 1 = surface definition. Level 5 = deep mechanistic insight and cross-domain connection.
+Concept: ${concept}
+Level: ${level} of 3 (level 1 = surface definition, level 3 = deep synthesis)
+Question: ${question}
+Player's answer: ${answer}
 
-Evaluate the player's answer. Be honest but encouraging. Return ONLY valid JSON:
-{"score": <integer 1-10>, "class": <"good"|"ok"|"shallow">, "label": <2-4 word label>, "feedback": <1-2 sentence honest feedback>}
+Score the answer from 1–10 based on depth, accuracy, and insight for this level. Keep the scoring strict, but your language warm and encouraging.
+
+Tone rules:
+- Always acknowledge what the player got right before noting what's missing
+- Never say an answer is wrong — say "you're close" or "you've got the surface, now go one level deeper"
+- For scores of 8+, be genuinely enthusiastic — tell them they've nailed something real
+- For scores of 4 and below, be gentle: find the grain of truth in what they said before pushing further
 
 Score guide:
-- 8-10: genuine insight, mechanistic understanding, goes beyond surface ("good")
-- 5-7: correct but surface-level, could go deeper ("ok")
-- 1-4: vague, restates the question, or wrong ("shallow")
+- 8–10: Shows genuine understanding, not just pattern-matching
+- 5–7: Adequate but surface-level or missing key insight
+- 1–4: Shallow, vague, or just restating the question
+${nextQSection}
 
-Be strict. Only give 8+ for real understanding. Short or vague answers should score low.`,
-      messages: [{
-        role: "user",
-        content: `Concept: ${concept}\nLevel: ${level}/5\nQuestion: ${question}\nAnswer: ${answer}`
-      }]
-    })
-  })
-
-  const data = await res.json()
-  const raw = data.content?.[0]?.text || ""
-  const clean = raw.replace(/```json|```/g, "").trim()
+Respond with ONLY valid JSON in this exact shape:
+{
+  "score": <number 1-10>,
+  "class": <"good" if score>=8, "ok" if score>=5, "shallow" if score<5>,
+  "label": <a 2-4 word warm verdict, e.g. "Sharp thinking" or "Almost there">,
+  "feedback": <1-2 sentences: acknowledge what they got right, then gently note what's missing>,
+  "insight": <one sentence starting with "The key insight here is..." — what a deeper answer would have included. Encouraging, like a mentor revealing something, not a teacher marking you wrong.>,
+  "nodeLabel": <a 3-5 word phrase in the player's own words that captures their core insight>${level < 3 && nextQuestionTemplate ? `,
+  "nextQuestion": <personalized version of the next question referencing something specific from the player's answer>` : ""}
+}`
 
   try {
-    const parsed = JSON.parse(clean)
-    return NextResponse.json(parsed)
-  } catch {
-    return NextResponse.json({ score: 5, class: "ok", label: "Noted", feedback: "Answer recorded." })
+    const message = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 600,
+      messages: [{ role: "user", content: prompt }]
+    })
+
+    const text = message.content[0].type === "text" ? message.content[0].text : ""
+    const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}")
+    return NextResponse.json(json)
+  } catch (err) {
+    console.error(err)
+    return NextResponse.json({ score: 5, class: "ok", label: "Noted", feedback: "Answer recorded.", insight: "", nodeLabel: "Answer recorded" })
   }
 }
