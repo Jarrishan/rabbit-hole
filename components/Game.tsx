@@ -23,7 +23,15 @@ function markVisited() {
 }
 interface StoredUser { id: string; username: string }
 function getStoredUser(): StoredUser | null {
-  try { const raw = localStorage.getItem("rabbit-hole-user"); return raw ? JSON.parse(raw) : null } catch { return null }
+  try {
+    const raw = localStorage.getItem("rabbit-hole-user")
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed.id === "string" && typeof parsed.username === "string" && parsed.id && parsed.username) {
+      return parsed as StoredUser
+    }
+    return null
+  } catch { return null }
 }
 function storeUser(id: string, username: string) {
   try { localStorage.setItem("rabbit-hole-user", JSON.stringify({ id, username })) } catch {}
@@ -31,7 +39,7 @@ function storeUser(id: string, username: string) {
 
 
 export default function Game() {
-  const [screen, setScreen] = useState<Screen>("home")
+  const [screen, setScreen] = useState<Screen | null>(null)
   const [concept, setConcept] = useState<Concept>(() => getTodayConcept())
   const [level, setLevel] = useState(0)
   const [answer, setAnswer] = useState("")
@@ -55,8 +63,10 @@ export default function Game() {
 
   useEffect(() => {
     const user = getStoredUser()
+    console.log("[rabbit-hole] mount — localStorage rabbit-hole-user:", localStorage.getItem("rabbit-hole-user"), "→ parsed:", user)
     if (user) {
       setUsername(user.username)
+      setScreen("home")
     } else if (isFirstVisit()) {
       setScreen("onboarding")
     } else {
@@ -208,6 +218,8 @@ const [pendingCustomConcept, setPendingCustomConcept] = useState("")
   const pct = scores.length > 0 ? Math.round((total / (scores.length * 10)) * 100) : 0
   const depthPct = level === 0 && !feedback ? 0 : Math.round(((level + (feedback ? 1 : 0)) / maxLevels) * 100)
   const currentQuestion = adaptiveQuestions[level] ?? concept.questions[level]
+
+  if (screen === null) return null
 
   if (screen === "onboarding") return (
     <OnboardingScreen onDone={() => { markVisited(); setScreen("username") }} />
@@ -362,6 +374,14 @@ function UsernameScreen({ onDone }: { onDone: (id: string, username: string) => 
   const [name, setName] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const user = getStoredUser()
+    if (user) {
+      console.log("[rabbit-hole] UsernameScreen — found stored user, skipping:", user)
+      onDone(user.id, user.username)
+    }
+  }, [])
 
   const valid = /^[a-zA-Z0-9_]{3,15}$/.test(name)
 
