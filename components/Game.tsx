@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react"
 import { getTodayConcept, getNextRefreshTime, LEVEL_LABELS, LEVEL_HINTS, Concept } from "@/lib/concepts"
 import { useGameStats } from "@/lib/useGameStats"
+import { supabase } from "@/lib/supabase"
 
 interface FeedbackResult {
   score: number
@@ -99,7 +100,7 @@ export default function Game() {
   const depthPct = level === 0 && !feedback ? 0 : Math.round(((level + (feedback ? 1 : 0)) / 5) * 100)
 
   if (screen === "home") return <HomeScreen concept={concept} stats={stats} onStart={() => setScreen("game")} />
-  if (screen === "results") return <ResultsScreen concept={concept} pct={pct} total={total} feedbacks={feedbacks} scores={scores} shareText={shareText()} onReset={startOver} />
+  if (screen === "results") return <ResultsScreen concept={concept} pct={pct} total={total} feedbacks={feedbacks} scores={scores} shareText={shareText()} onReset={startOver} date={new Date().toISOString().split("T")[0]} />
 
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", padding: "1.5rem 1.25rem", minHeight: "100dvh" }}>
@@ -178,8 +179,11 @@ export default function Game() {
   )
 }
 
+interface LeaderboardEntry { username: string; score: number }
+
 function HomeScreen({ concept, stats, onStart }: { concept: Concept; stats: any; onStart: () => void }) {
   const [timeLeft, setTimeLeft] = useState("")
+  const [leaders, setLeaders] = useState<LeaderboardEntry[]>([])
 
   useEffect(() => {
     function update() {
@@ -193,6 +197,18 @@ function HomeScreen({ concept, stats, onStart }: { concept: Concept; stats: any;
     const id = setInterval(update, 60000)
     return () => clearInterval(id)
   }, [])
+
+  useEffect(() => {
+    const today = new Date().toISOString().split("T")[0]
+    supabase
+      .from("scores")
+      .select("username, score")
+      .eq("concept", concept.title)
+      .eq("date", today)
+      .order("score", { ascending: false })
+      .limit(10)
+      .then(({ data }) => { if (data) setLeaders(data) })
+  }, [concept.title])
 
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", padding: "2rem 1.25rem", minHeight: "100dvh", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
@@ -237,12 +253,38 @@ function HomeScreen({ concept, stats, onStart }: { concept: Concept; stats: any;
           ))}
         </div>
       )}
+
+      {leaders.length > 0 && (
+        <div style={{ marginTop: "2rem" }}>
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-3)", letterSpacing: "0.06em", marginBottom: "0.75rem" }}>
+            TODAY'S LEADERBOARD
+          </p>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
+            {leaders.map((entry, i) => (
+              <div key={i} style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "0.65rem 1rem",
+                borderBottom: i < leaders.length - 1 ? "1px solid var(--border)" : "none"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-3)", minWidth: 16 }}>{i + 1}</span>
+                  <span style={{ fontSize: 14, color: "var(--text)" }}>{entry.username}</span>
+                </div>
+                <span style={{ fontFamily: "var(--font-display)", fontSize: 18, color: i === 0 ? "var(--teal)" : "var(--text-2)" }}>{entry.score}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function ResultsScreen({ concept, pct, total, feedbacks, scores, shareText, onReset }: any) {
+function ResultsScreen({ concept, pct, total, feedbacks, scores, shareText, onReset, date }: any) {
   const [copied, setCopied] = useState(false)
+  const [name, setName] = useState("")
+  const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const medal = pct >= 80 ? "Deep thinker" : pct >= 60 ? "Going deeper" : pct >= 40 ? "Surface level" : "Start digging"
 
   function copy() {
@@ -250,6 +292,21 @@ function ResultsScreen({ concept, pct, total, feedbacks, scores, shareText, onRe
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
+  }
+
+  async function submitToLeaderboard() {
+    if (!name.trim()) return
+    setSubmitting(true)
+    await supabase.from("scores").insert({
+      username: name.trim(),
+      concept: concept.title,
+      score: pct,
+      date,
+      answers: [],
+      feedbacks: feedbacks
+    })
+    setSubmitted(true)
+    setSubmitting(false)
   }
 
   return (
@@ -302,6 +359,35 @@ function ResultsScreen({ concept, pct, total, feedbacks, scores, shareText, onRe
       <button className="btn btn-fill" onClick={copy} style={{ marginBottom: "0.75rem" }}>
         {copied ? "Copied!" : "Copy result"}
       </button>
+
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "1rem", marginBottom: "0.75rem" }}>
+        <p style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-3)", letterSpacing: "0.06em", marginBottom: "0.75rem" }}>
+          ADD TO LEADERBOARD
+        </p>
+        {submitted ? (
+          <p style={{ fontSize: 13, color: "var(--teal)" }}>You're on the board.</p>
+        ) : (
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && submitToLeaderboard()}
+              placeholder="Your name"
+              maxLength={20}
+              style={{
+                flex: 1, background: "var(--bg)", border: "1px solid var(--border)",
+                borderRadius: "var(--radius)", padding: "0.5rem 0.75rem",
+                fontSize: 14, color: "var(--text)", fontFamily: "inherit", outline: "none"
+              }}
+            />
+            <button className="btn" onClick={submitToLeaderboard} disabled={!name.trim() || submitting}
+              style={{ padding: "0.5rem 1rem", fontSize: 13 }}>
+              {submitting ? "..." : "Submit"}
+            </button>
+          </div>
+        )}
+      </div>
+
       <button className="btn" onClick={onReset}>Back to home</button>
     </div>
   )
