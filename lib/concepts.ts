@@ -1,6 +1,7 @@
 export interface Concept {
   title: string
   teaser: string
+  hook?: string
   questions: string[]
 }
 

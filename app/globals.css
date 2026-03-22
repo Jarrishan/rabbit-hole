@@ -20,6 +20,7 @@
   --font-mono: 'DM Mono', monospace;
   --radius: 10px;
   --radius-lg: 16px;
+  --accent: #1D9E75;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -38,6 +39,7 @@
     --amber-light: #412402;
     --red: #F09595;
     --red-light: #501313;
+    --accent: #5DCAA5;
   }
 }
 
