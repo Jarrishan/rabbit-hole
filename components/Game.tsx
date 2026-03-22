@@ -58,6 +58,9 @@ export default function Game() {
   const [extended, setExtended] = useState(false)
   const [username, setUsername] = useState("")
   const [rank, setRank] = useState<number | null>(null)
+  const [trainingMode, setTrainingMode] = useState(false)
+  const [hint, setHint] = useState<string | null>(null)
+  const [hintLoading, setHintLoading] = useState(false)
   const { stats, saveResult } = useGameStats()
   const textRef = useRef<HTMLTextAreaElement>(null)
 
@@ -81,7 +84,7 @@ export default function Game() {
   async function submitAnswer() {
     if (!concept || answer.trim().length === 0) return
     const currentQuestion = adaptiveQuestions[level] ?? concept.questions[level]
-    setLoading(true); setFeedback(null); setStory(""); setStoryLoading(false)
+    setLoading(true); setFeedback(null); setHint(null); setStory(""); setStoryLoading(false)
     try {
       const res = await fetch("/api/judge", {
         method: "POST",
@@ -104,6 +107,18 @@ export default function Game() {
       setNodeLabels(prev => [...prev, data.nodeLabel || data.label])
       if (data.nextQuestion && level < 4) {
         setAdaptiveQuestions(prev => { const next = [...prev]; next[level + 1] = data.nextQuestion as string; return next })
+      }
+      // Fetch hint if training mode is on
+      if (trainingMode) {
+        setHintLoading(true)
+        fetch("/api/hint", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ concept: concept.title, level: level + 1, question: currentQuestion, answer: answer.trim(), score: data.score })
+        })
+          .then(r => r.json())
+          .then(d => { setHint(d.hint || null); setHintLoading(false) })
+          .catch(() => setHintLoading(false))
       }
       // Fire story fetch asynchronously
       setStoryLoading(true)
@@ -134,7 +149,7 @@ export default function Game() {
     } else {
       setTransitioning(true)
       setTimeout(() => {
-        setLevel(l => l + 1); setAnswer(""); setFeedback(null); setStory(""); setStoryLoading(false); setTransitioning(false)
+        setLevel(l => l + 1); setAnswer(""); setFeedback(null); setHint(null); setStory(""); setStoryLoading(false); setTransitioning(false)
       }, 600)
     }
   }
@@ -246,7 +261,15 @@ const [pendingCustomConcept, setPendingCustomConcept] = useState("")
     <div style={{ maxWidth: 480, margin: "0 auto", padding: "1.5rem 1.25rem", minHeight: "100dvh", opacity: transitioning ? 0 : 1, transition: "opacity 0.3s ease" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-3)", letterSpacing: "0.05em" }}>{concept.title.toUpperCase()}</span>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-3)" }}>{level + 1} / {maxLevels}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <button
+            onClick={() => setTrainingMode(m => !m)}
+            style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: trainingMode ? "var(--teal)" : "var(--text-3)", background: "none", border: "none", cursor: "pointer", padding: 0, letterSpacing: "0.04em" }}
+          >
+            {trainingMode ? "Train: on" : "Train: off"}
+          </button>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-3)" }}>{level + 1} / {maxLevels}</span>
+        </div>
       </div>
       <div style={{ height: 2, background: "var(--border)", borderRadius: 2, marginBottom: "0.75rem", overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${depthPct}%`, background: "var(--accent)", borderRadius: 2, transition: "width 0.6s ease" }} />
@@ -300,6 +323,18 @@ const [pendingCustomConcept, setPendingCustomConcept] = useState("")
             {feedback.insight && (
               <div style={{ borderLeft: "2px solid var(--border-strong)", paddingLeft: "0.75rem", marginTop: "0.75rem" }}>
                 <p style={{ fontSize: 13, color: "var(--text-2)", fontStyle: "italic", lineHeight: 1.6 }}>{feedback.insight}</p>
+              </div>
+            )}
+            {trainingMode && (hint || hintLoading) && (
+              <div style={{ background: "var(--teal-light)", borderRadius: "var(--radius)", padding: "0.75rem 1rem", marginTop: "0.75rem" }}>
+                <p style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--teal)", letterSpacing: "0.08em", marginBottom: "0.35rem" }}>HINT</p>
+                {hintLoading ? (
+                  <div style={{ display: "flex", gap: 4, paddingTop: "0.1rem" }}>
+                    {[0,1,2].map(i => <div key={i} style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--teal)", animation: "shimmer 1.2s infinite", animationDelay: `${i * 0.2}s` }} />)}
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 13, color: "var(--teal)", lineHeight: 1.6 }}>{hint}</p>
+                )}
               </div>
             )}
             {(story || storyLoading) && (
