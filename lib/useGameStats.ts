@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect } from "react"
 
-export interface DayResult {
+interface GameResult {
   date: string
   concept: string
   scores: number[]
@@ -9,22 +9,17 @@ export interface DayResult {
   pct: number
 }
 
-export interface GameStats {
+interface Stats {
+  gamesPlayed: number
   streak: number
   bestScore: number
-  gamesPlayed: number
-  history: DayResult[]
+  lastPlayed: string | null
 }
 
-const DEFAULT_STATS: GameStats = {
-  streak: 0,
-  bestScore: 0,
-  gamesPlayed: 0,
-  history: []
-}
+const DEFAULT_STATS: Stats = { gamesPlayed: 0, streak: 0, bestScore: 0, lastPlayed: null }
 
 export function useGameStats() {
-  const [stats, setStats] = useState<GameStats>(DEFAULT_STATS)
+  const [stats, setStats] = useState<Stats>(DEFAULT_STATS)
 
   useEffect(() => {
     try {
@@ -33,23 +28,29 @@ export function useGameStats() {
     } catch {}
   }, [])
 
-  function saveResult(result: DayResult) {
-    setStats(prev => {
-      const history = [result, ...prev.history.filter(h => h.date !== result.date)].slice(0, 30)
-      const lastDate = prev.history[0]?.date
-      const yesterday = new Date()
-      yesterday.setDate(yesterday.getDate() - 1)
-      const yStr = yesterday.toISOString().split("T")[0]
-      const streak = lastDate === yStr ? prev.streak + 1 : 1
-      const next: GameStats = {
-        streak,
-        bestScore: Math.max(prev.bestScore, result.pct),
+  function saveResult(result: GameResult) {
+    try {
+      const history: GameResult[] = JSON.parse(localStorage.getItem("rabbit-hole-history") || "[]")
+      history.unshift(result)
+      localStorage.setItem("rabbit-hole-history", JSON.stringify(history.slice(0, 30)))
+
+      const today = new Date().toISOString().split("T")[0]
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0]
+      const prev = stats
+
+      const newStreak = prev.lastPlayed === yesterday ? prev.streak + 1
+        : prev.lastPlayed === today ? prev.streak
+        : 1
+
+      const newStats: Stats = {
         gamesPlayed: prev.gamesPlayed + 1,
-        history
+        streak: newStreak,
+        bestScore: Math.max(prev.bestScore, result.pct),
+        lastPlayed: today
       }
-      try { localStorage.setItem("rabbit-hole-stats", JSON.stringify(next)) } catch {}
-      return next
-    })
+      localStorage.setItem("rabbit-hole-stats", JSON.stringify(newStats))
+      setStats(newStats)
+    } catch {}
   }
 
   return { stats, saveResult }
