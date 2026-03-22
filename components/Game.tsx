@@ -1,6 +1,6 @@
 "use client"
 import { useState, useRef, useEffect } from "react"
-import { getTodayConcept, getNextRefreshTime, LEVEL_LABELS, LEVEL_HINTS, Concept, CONCEPTS } from "@/lib/concepts"
+import { getTodayConcept, getTomorrowConcept, getNextRefreshTime, LEVEL_LABELS, LEVEL_HINTS, Concept } from "@/lib/concepts"
 import { useGameStats } from "@/lib/useGameStats"
 import { supabase } from "@/lib/supabase"
 
@@ -495,6 +495,7 @@ function HomeScreen({ concept, stats, username, initialConcept, onStart, onConce
   const [customLoading, setCustomLoading] = useState(false)
   const [customError, setCustomError] = useState("")
   const [timeLeft, setTimeLeft] = useState("")
+  const tomorrow = getTomorrowConcept()
 
   useEffect(() => {
     function update() {
@@ -562,6 +563,11 @@ function HomeScreen({ concept, stats, username, initialConcept, onStart, onConce
               NEXT WORD IN {timeLeft.toUpperCase()}
             </p>
           )}
+        </div>
+        <div style={{ background: "var(--surface)", borderRadius: "var(--radius-lg)", padding: "1.25rem", marginBottom: "1rem", opacity: 0.6 }}>
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-3)", letterSpacing: "0.06em", marginBottom: "0.5rem" }}>TOMORROW</p>
+          <p style={{ fontFamily: "var(--font-display)", fontSize: 18, marginBottom: "0.25rem" }}>{tomorrow.title}</p>
+          <p style={{ fontSize: 13, color: "var(--text-2)", fontStyle: "italic" }}>{tomorrow.teaser}</p>
         </div>
         <button className="btn btn-fill" onClick={onStart} style={{ marginBottom: "0.75rem" }}>Start</button>
         <TodayLeaderboardPreview username={username} onSeeAll={onLeaderboard} />

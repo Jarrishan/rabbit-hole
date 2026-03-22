@@ -191,6 +191,12 @@ export function getTodayConcept(): Concept {
   return CONCEPTS[dayIndex % CONCEPTS.length]
 }
 
+export function getTomorrowConcept(): Concept {
+  const epoch = new Date("2024-01-01").getTime()
+  const dayIndex = Math.floor((Date.now() - epoch) / 86400000)
+  return CONCEPTS[(dayIndex + 1) % CONCEPTS.length]
+}
+
 export function getNextRefreshTime(): Date {
   const now = Date.now()
   const epoch = new Date("2024-01-01").getTime()
