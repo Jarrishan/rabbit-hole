@@ -1,6 +1,6 @@
 "use client"
 import { useState, useRef, useEffect } from "react"
-import { getTodayConcept, LEVEL_LABELS, LEVEL_HINTS, Concept, CONCEPTS } from "@/lib/concepts"
+import { getTodayConcept, getNextRefreshTime, LEVEL_LABELS, LEVEL_HINTS, Concept, CONCEPTS } from "@/lib/concepts"
 import { useGameStats } from "@/lib/useGameStats"
 import { supabase } from "@/lib/supabase"
 
@@ -474,6 +474,20 @@ function HomeScreen({ concept, stats, username, initialConcept, onStart, onConce
   const [customInput, setCustomInput] = useState(initialConcept || "")
   const [customLoading, setCustomLoading] = useState(false)
   const [customError, setCustomError] = useState("")
+  const [timeLeft, setTimeLeft] = useState("")
+
+  useEffect(() => {
+    function update() {
+      const diff = getNextRefreshTime().getTime() - Date.now()
+      if (diff <= 0) { setTimeLeft("now"); return }
+      const h = Math.floor(diff / 3600000)
+      const m = Math.floor((diff % 3600000) / 60000)
+      setTimeLeft(h > 0 ? `${h}h ${m}m` : `${m}m`)
+    }
+    update()
+    const id = setInterval(update, 60000)
+    return () => clearInterval(id)
+  }, [])
 
   async function handleCustomConcept(topic?: string) {
     const val = (topic ?? customInput).trim()
@@ -523,6 +537,11 @@ function HomeScreen({ concept, stats, username, initialConcept, onStart, onConce
           <p style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-3)", letterSpacing: "0.06em", marginBottom: "0.5rem" }}>TODAY&apos;S CONCEPT</p>
           <p style={{ fontFamily: "var(--font-display)", fontSize: 24, marginBottom: "0.25rem" }}>{concept.title}</p>
           <p style={{ fontSize: 13, color: "var(--text-2)", fontStyle: "italic" }}>{concept.teaser}</p>
+          {timeLeft && (
+            <p style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-3)", marginTop: "0.75rem", letterSpacing: "0.05em" }}>
+              NEXT WORD IN {timeLeft.toUpperCase()}
+            </p>
+          )}
         </div>
         <button className="btn btn-fill" onClick={onStart} style={{ marginBottom: "0.75rem" }}>Start</button>
         <TodayLeaderboardPreview username={username} onSeeAll={onLeaderboard} />
