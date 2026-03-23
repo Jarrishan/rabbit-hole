@@ -447,7 +447,7 @@ function UsernameScreen({ onDone }: { onDone: (id: string, username: string) => 
           value={name}
           onChange={e => { setName(e.target.value); setError("") }}
           onKeyDown={e => e.key === "Enter" && handleSubmit()}
-          placeholder="e.g. jarrishan, curious_cat, deepdiver"
+          placeholder="e.g. John S, curious_cat, deepdiver"
           maxLength={15}
           autoFocus
           style={{ width: "100%", background: "var(--surface)", border: `1px solid ${error ? "var(--red)" : "var(--border)"}`, borderRadius: "var(--radius)", color: "var(--text)", fontSize: 16, padding: "0.75rem 1rem", outline: "none", fontFamily: "inherit", boxSizing: "border-box", transition: "border-color 0.2s", marginBottom: "0.5rem" }}
