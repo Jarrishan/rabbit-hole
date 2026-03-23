@@ -447,13 +447,14 @@ function UsernameScreen({ onDone }: { onDone: (id: string, username: string) => 
           value={name}
           onChange={e => { setName(e.target.value); setError("") }}
           onKeyDown={e => e.key === "Enter" && handleSubmit()}
-          placeholder="your_username"
+          placeholder="e.g. jarrishan, curious_cat, deepdiver"
           maxLength={15}
           autoFocus
           style={{ width: "100%", background: "var(--surface)", border: `1px solid ${error ? "var(--red)" : "var(--border)"}`, borderRadius: "var(--radius)", color: "var(--text)", fontSize: 16, padding: "0.75rem 1rem", outline: "none", fontFamily: "inherit", boxSizing: "border-box", transition: "border-color 0.2s", marginBottom: "0.5rem" }}
           onFocus={e => !error && (e.currentTarget.style.borderColor = "var(--border-strong)")}
           onBlur={e => !error && (e.currentTarget.style.borderColor = "var(--border)")}
         />
+        <p style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-3)", marginBottom: "0.75rem", letterSpacing: "0.03em" }}>This is your name on the leaderboard — make it count.</p>
         {error && <p style={{ fontSize: 12, color: "var(--red)", marginBottom: "0.75rem" }}>{error}</p>}
         <button
           className="btn btn-fill"
@@ -782,10 +783,15 @@ function LeaderboardScreen({ username, onBack }: { username: string; onBack: () 
     } else {
       const { data } = await supabase
         .from("scores")
-        .select("username, concept, score")
+        .select("username, score, concept")
         .order("score", { ascending: false })
-        .limit(20)
-      setRows(data ?? [])
+      const seen = new Set()
+      const deduped = (data || []).filter((row: any) => {
+        if (seen.has(row.username)) return false
+        seen.add(row.username)
+        return true
+      }).slice(0, 20)
+      setRows(deduped)
     }
     setLoading(false)
   }
