@@ -668,7 +668,7 @@ function ResultsScreen({ concept, pct, total, feedbacks, scores, answers, nodeLa
   const medal = pct >= 80 ? "deep thinker" : pct >= 60 ? "going deep" : pct >= 40 ? "getting there" : "just started"
 
   const shareText = () => {
-    return `Rabbit Hole — go beyond the surface.\nI got ${pct}/100 on today's concept 🐇\nTry it: rabbit-hole-rust.vercel.app`
+    return `Rabbit Hole — go beyond the surface.\nI got ${pct}/100 on today's concept 🐇\nTry it: rabbit-hole.fyi`
   }
 
   function copy() {
@@ -725,7 +725,7 @@ function ResultsScreen({ concept, pct, total, feedbacks, scores, answers, nodeLa
 
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "1rem", fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text-2)", lineHeight: 1.8, marginBottom: "0.5rem", whiteSpace: "pre-wrap" }}>{shareText()}</div>
       <p style={{ fontSize: 12, color: "var(--teal)", marginBottom: "1rem", textAlign: "center" }}>
-        <a href="https://rabbit-hole-rust.vercel.app" target="_blank" rel="noopener noreferrer" style={{ color: "var(--teal)", textDecoration: "none" }}>Play at rabbit-hole-rust.vercel.app</a>
+        <a href="https://rabbit-hole.fyi" target="_blank" rel="noopener noreferrer" style={{ color: "var(--teal)", textDecoration: "none" }}>Play at rabbit-hole.fyi</a>
       </p>
       <button className="btn btn-fill" onClick={copy} style={{ marginBottom: "0.75rem" }}>{copied ? "Copied!" : "Copy result"}</button>
 
