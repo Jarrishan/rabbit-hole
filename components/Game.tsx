@@ -61,6 +61,8 @@ export default function Game() {
   const [trainingMode, setTrainingMode] = useState(false)
   const [hint, setHint] = useState<string | null>(null)
   const [hintLoading, setHintLoading] = useState(false)
+  const [showUsernameOverlay, setShowUsernameOverlay] = useState(false)
+  const pendingScoreRef = useRef<{ conceptTitle: string; finalPct: number; today: string } | null>(null)
   const { stats, saveResult } = useGameStats()
   const textRef = useRef<HTMLTextAreaElement>(null)
 
@@ -73,7 +75,7 @@ export default function Game() {
     } else if (isFirstVisit()) {
       setScreen("onboarding")
     } else {
-      setScreen("username")
+      setScreen("home")
     }
   }, [])
 
@@ -154,52 +156,53 @@ export default function Game() {
     }
   }
 
+  async function submitScoreToSupabase(user: { id: string; username: string }, conceptTitle: string, finalPct: number, today: string) {
+    try {
+      const { data: existing } = await supabase
+        .from("scores")
+        .select("id, score")
+        .eq("username", user.username)
+        .eq("date", today)
+        .single()
+
+      if (existing) {
+        if (finalPct > existing.score) {
+          await supabase.from("scores").update({ score: finalPct, answers, feedbacks }).eq("id", existing.id)
+        }
+      } else {
+        await supabase.from("scores").insert({ user_id: user.id, username: user.username, concept: conceptTitle, score: finalPct, date: today, answers, feedbacks })
+      }
+
+      const { count } = await supabase
+        .from("scores")
+        .select("id", { count: "exact", head: true })
+        .eq("concept", conceptTitle)
+        .eq("date", today)
+        .gt("score", finalPct)
+      setRank((count ?? 0) + 1)
+    } catch {}
+  }
+
   async function finishGame() {
     const allScores = [...scores]
     const total = allScores.reduce((a, b) => a + b, 0)
     const levelsCompleted = allScores.length
     const maxScore = levelsCompleted * 10
     const pct = Math.round((total / maxScore) * 100)
-    saveResult({ date: new Date().toISOString().split("T")[0], concept: concept.title, scores: allScores, total, pct })
-    setScreen("results")
-    setDebriefLoading(true)
-    const user = getStoredUser()
     const today = new Date().toISOString().split("T")[0]
     const conceptTitle = concept.title
-    const finalPct = pct
+    saveResult({ date: today, concept: conceptTitle, scores: allScores, total, pct })
+    setScreen("results")
+    setDebriefLoading(true)
+
+    const user = getStoredUser()
     if (user) {
-      ;(async () => {
-        try {
-          const { data: existing } = await supabase
-            .from("scores")
-            .select("id, score")
-            .eq("username", user.username)
-            .eq("date", today)
-            .single()
-
-          if (existing) {
-            if (finalPct > existing.score) {
-              await supabase
-                .from("scores")
-                .update({ score: finalPct, answers, feedbacks })
-                .eq("id", existing.id)
-            }
-          } else {
-            await supabase
-              .from("scores")
-              .insert({ user_id: user.id, username: user.username, concept: conceptTitle, score: finalPct, date: today, answers, feedbacks })
-          }
-
-          const { count } = await supabase
-            .from("scores")
-            .select("id", { count: "exact", head: true })
-            .eq("concept", conceptTitle)
-            .eq("date", today)
-            .gt("score", finalPct)
-          setRank((count ?? 0) + 1)
-        } catch {}
-      })()
+      submitScoreToSupabase(user, conceptTitle, pct, today)
+    } else {
+      pendingScoreRef.current = { conceptTitle, finalPct: pct, today }
+      setShowUsernameOverlay(true)
     }
+
     try {
       const res = await fetch("/api/debrief", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -237,10 +240,7 @@ const [pendingCustomConcept, setPendingCustomConcept] = useState("")
   if (screen === null) return null
 
   if (screen === "onboarding") return (
-    <OnboardingScreen onDone={() => { markVisited(); setScreen("username") }} />
-  )
-  if (screen === "username") return (
-    <UsernameScreen onDone={(id: string, uname: string) => { storeUser(id, uname); setUsername(uname); setScreen("home") }} />
+    <OnboardingScreen onDone={() => { markVisited(); setScreen("home") }} />
   )
   if (screen === "leaderboard") return (
     <LeaderboardScreen username={username} onBack={() => setScreen("home")} />
@@ -254,7 +254,21 @@ const [pendingCustomConcept, setPendingCustomConcept] = useState("")
   )
   if (screen === "hook") return <HookScreen concept={concept} onReady={() => setScreen("game")} />
   if (screen === "results") return (
-    <ResultsScreen concept={concept} pct={pct} total={total} feedbacks={feedbacks} scores={scores} answers={answers} nodeLabels={nodeLabels} debrief={debrief} debriefLoading={debriefLoading} rank={rank} onReset={startOver} onLeaderboard={() => setScreen("leaderboard")} />
+    <div style={{ position: "relative" }}>
+      <ResultsScreen concept={concept} pct={pct} total={total} feedbacks={feedbacks} scores={scores} answers={answers} nodeLabels={nodeLabels} debrief={debrief} debriefLoading={debriefLoading} rank={rank} onReset={startOver} onLeaderboard={() => setScreen("leaderboard")} />
+      {showUsernameOverlay && (
+        <UsernameOverlay
+          onDone={(id, uname) => {
+            storeUser(id, uname)
+            setUsername(uname)
+            setShowUsernameOverlay(false)
+            const p = pendingScoreRef.current
+            if (p) { submitScoreToSupabase({ id, username: uname }, p.conceptTitle, p.finalPct, p.today); pendingScoreRef.current = null }
+          }}
+          onSkip={() => { setShowUsernameOverlay(false); pendingScoreRef.current = null }}
+        />
+      )}
+    </div>
   )
 
   return (
@@ -405,18 +419,10 @@ function OnboardingScreen({ onDone }: { onDone: () => void }) {
   )
 }
 
-function UsernameScreen({ onDone }: { onDone: (id: string, username: string) => void }) {
+function UsernameOverlay({ onDone, onSkip }: { onDone: (id: string, username: string) => void; onSkip: () => void }) {
   const [name, setName] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    const user = getStoredUser()
-    if (user) {
-      console.log("[rabbit-hole] UsernameScreen — found stored user, skipping:", user)
-      onDone(user.id, user.username)
-    }
-  }, [])
 
   const valid = /^[a-zA-Z0-9_]{3,15}$/.test(name)
 
@@ -437,11 +443,10 @@ function UsernameScreen({ onDone }: { onDone: (id: string, username: string) => 
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: "0 auto", padding: "2rem 1.25rem", minHeight: "100dvh", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-      <div className="fade-up">
-        <p style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-3)", letterSpacing: "0.1em", marginBottom: "1.5rem" }}>RABBIT HOLE</p>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 26, lineHeight: 1.2, fontWeight: 400, marginBottom: "0.5rem" }}>Pick a username.</h2>
-        <p style={{ fontSize: 14, color: "var(--text-2)", marginBottom: "1.5rem" }}>3–15 characters. Letters, numbers, underscores.</p>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100, padding: "1rem" }}>
+      <div className="fade-up" style={{ background: "var(--bg)", borderRadius: "var(--radius-lg)", padding: "2rem 1.5rem", width: "100%", maxWidth: 480 }}>
+        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, lineHeight: 1.2, fontWeight: 400, marginBottom: "0.5rem" }}>Save your score to the leaderboard.</h2>
+        <p style={{ fontSize: 14, color: "var(--text-2)", marginBottom: "1.5rem", lineHeight: 1.6 }}>Pick a username to appear on the leaderboard and track your streak.</p>
         <input
           type="text"
           value={name}
@@ -454,15 +459,18 @@ function UsernameScreen({ onDone }: { onDone: (id: string, username: string) => 
           onFocus={e => !error && (e.currentTarget.style.borderColor = "var(--border-strong)")}
           onBlur={e => !error && (e.currentTarget.style.borderColor = "var(--border)")}
         />
-        <p style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-3)", marginBottom: "0.75rem", letterSpacing: "0.03em" }}>This is your name on the leaderboard — make it count.</p>
+        <p style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-3)", marginBottom: "0.75rem", letterSpacing: "0.03em" }}>3–15 characters. Letters, numbers, underscores.</p>
         {error && <p style={{ fontSize: 12, color: "var(--red)", marginBottom: "0.75rem" }}>{error}</p>}
         <button
           className="btn btn-fill"
           onClick={handleSubmit}
           disabled={!valid || loading}
-          style={{ opacity: valid && !loading ? 1 : 0.45, transition: "opacity 0.15s" }}
+          style={{ opacity: valid && !loading ? 1 : 0.45, transition: "opacity 0.15s", marginBottom: "0.75rem" }}
         >
-          {loading ? "Saving..." : "Let's go"}
+          {loading ? "Saving..." : "Save my score"}
+        </button>
+        <button onClick={onSkip} style={{ display: "block", width: "100%", background: "none", border: "none", padding: "0.25rem 0", cursor: "pointer", fontSize: 13, color: "var(--text-3)", textAlign: "center" }}>
+          Skip — don&apos;t save
         </button>
       </div>
     </div>
